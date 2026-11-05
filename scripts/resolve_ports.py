@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Pick the Nano and ESP32 serial ports from `arduino-cli board list`.
+"""Pick the Nano, DevKit ESP32, and Nano ESP32 serial ports.
 
 With --print, the chosen port is written to stdout and diagnostics go to
-stderr. NANO_PORT and ESP_PORT, when already set, are used as-is.
+stderr. NANO_PORT, ESP_PORT, and NANO_ESP32_PORT, when already set, are
+used as-is.
 """
 
 import argparse
@@ -29,18 +30,23 @@ def parse_hardware_id(hardware_id):
 
 
 def classify(fqbns, vid, pid):
-    """Return 'nano', 'esp', or 'unknown'."""
+    """Return 'nano', 'esp', 'nano-esp32', or 'unknown'."""
     joined = " ".join(fqbns).lower()
+    vid = normalize_id(vid)
+    pid = normalize_id(pid)
+    # nano_nora is an esp32:esp32 FQBN, and 2341 is also the classic Nano
+    # VID. Both checks have to win before those broader rules.
+    if "nano_nora" in joined or (vid == "2341" and pid == "0070"):
+        return "nano-esp32"
     if "esp32:esp32" in joined:
         return "esp"
     if "arduino:avr:nano" in joined:
         return "nano"
-    vid = normalize_id(vid)
-    pid = normalize_id(pid)
     # CP2102 is the common ESP32 Dev Module UART. 303A is Espressif native USB.
     if vid == "303A" or (vid == "10C4" and pid == "EA60"):
         return "esp"
-    # 2341 is official Arduino. FTDI 0403:6001 is a common genuine Nano adapter.
+    # Other 2341 ids are official Arduino boards. FTDI 0403:6001 is a common
+    # genuine Nano adapter.
     if vid == "2341" or (vid == "0403" and pid == "6001"):
         return "nano"
     return "unknown"
@@ -115,17 +121,23 @@ def fail(message, ports):
         lines.append("  (none)")
     lines.append("Set the port yourself, for example:")
     lines.append("  make flash NANO_PORT=/dev/ttyUSB0 ESP_PORT=/dev/ttyUSB1")
+    lines.append("  make flash-nano-esp32 NANO_ESP32_PORT=/dev/ttyACM0")
     raise SystemExit("\n".join(lines))
+
+
+ENV_NAMES = {
+    "nano": "NANO_PORT",
+    "esp": "ESP_PORT",
+    "nano-esp32": "NANO_ESP32_PORT",
+}
 
 
 def resolve(ports, need):
     result = {}
-    if need in ("nano", "both") and os.environ.get("NANO_PORT"):
-        result["nano"] = os.environ["NANO_PORT"]
-    if need in ("esp", "both") and os.environ.get("ESP_PORT"):
-        result["esp"] = os.environ["ESP_PORT"]
-
     wanted = ["nano", "esp"] if need == "both" else [need]
+    for role in wanted:
+        if os.environ.get(ENV_NAMES[role]):
+            result[role] = os.environ[ENV_NAMES[role]]
     if all(role in result for role in wanted):
         return result
 
@@ -168,21 +180,20 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cli", required=True)
     parser.add_argument("--config", required=True)
-    parser.add_argument("--need", choices=("nano", "esp", "both"), required=True)
+    parser.add_argument("--need", choices=("nano", "esp", "nano-esp32", "both"), required=True)
     parser.add_argument(
         "--print",
         dest="print_port",
         action="store_true",
-        help="print only the requested port (requires --need nano or esp)",
+        help="print only the requested port (not valid with --need both)",
     )
     args = parser.parse_args()
     if args.print_port and args.need == "both":
-        raise SystemExit("--print needs --need nano or --need esp")
+        raise SystemExit("--print needs --need nano, esp, or nano-esp32")
 
     wanted = ["nano", "esp"] if args.need == "both" else [args.need]
-    env_names = {"nano": "NANO_PORT", "esp": "ESP_PORT"}
-    if all(os.environ.get(env_names[role]) for role in wanted):
-        chosen = {role: os.environ[env_names[role]] for role in wanted}
+    if all(os.environ.get(ENV_NAMES[role]) for role in wanted):
+        chosen = {role: os.environ[ENV_NAMES[role]] for role in wanted}
     else:
         chosen = resolve(load_ports(args.cli, args.config), args.need)
 
@@ -193,6 +204,8 @@ def main():
         sys.stdout.write(f"NANO_PORT={chosen['nano']}\n")
     if args.need in ("esp", "both"):
         sys.stdout.write(f"ESP_PORT={chosen['esp']}\n")
+    if args.need == "nano-esp32":
+        sys.stdout.write(f"NANO_ESP32_PORT={chosen['nano-esp32']}\n")
 
 
 if __name__ == "__main__":

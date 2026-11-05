@@ -115,13 +115,14 @@ Run 5v- from Step Down to DC- on relay
 
 # Headless flash
 
-`make flash` compiles and uploads the Nano and the ESP32 with [arduino-cli](https://arduino.github.io/arduino-cli/), then writes the ESP32 LittleFS image from `ESP32_Code/data` (the web UI, plus `cards.txt` and `admin.txt`). The Arduino IDE is not required.
+`make flash` compiles and uploads the ATmega Nano and the DevKit ESP32 with [arduino-cli](https://arduino.github.io/arduino-cli/), then writes the ESP32 LittleFS image from `ESP32_Code/data` (the web UI, plus `cards.txt` and `admin.txt`). The Arduino Nano ESP32 has its own target, `make flash-nano-esp32`. The Arduino IDE is not required.
 
 ```bash
-make bootstrap   # download arduino-cli if it is not on PATH, then install cores and libraries
-make list        # show serial ports
-make compile     # build both sketches, no upload
-make flash       # Nano, then ESP32 app, then LittleFS
+make bootstrap          # download arduino-cli if it is not on PATH, then install cores and libraries
+make list               # show serial ports
+make compile            # build all three sketches, no upload
+make flash              # ATmega Nano, then DevKit ESP32 app, then LittleFS
+make flash-nano-esp32   # Nano ESP32 application over DFU
 ```
 
 The Nano target defaults to the ATmega328P old bootloader (`NANO_CPU=atmega328old`), which is what most clone boards need. An official Nano is:
@@ -130,11 +131,14 @@ The Nano target defaults to the ATmega328P old bootloader (`NANO_CPU=atmega328ol
 make flash-nano NANO_CPU=atmega328
 ```
 
-Ports come from `arduino-cli board list`. A CP2102 (`10C4:EA60`) or Espressif native USB id (`303A`) is the ESP32. An FTDI adapter (`0403:6001`) or official Arduino id (`2341`) is the Nano. CH340 adapters (`1A86:7523`) are used on both boards, so if both ports look the same, set them yourself:
+Ports come from `arduino-cli board list`. A CP2102 (`10C4:EA60`) or Espressif native USB id (`303A`) is the DevKit ESP32. `2341:0070` is the Arduino Nano ESP32. Another official Arduino id (`2341`) or an FTDI adapter (`0403:6001`) is the ATmega Nano. CH340 adapters (`1A86:7523`) are used on the Nano and the DevKit, so if both of those ports look the same, set them yourself:
 
 ```bash
 make flash NANO_PORT=/dev/ttyUSB0 ESP_PORT=/dev/ttyUSB1
+make flash-nano-esp32 NANO_ESP32_PORT=/dev/ttyACM0
 ```
+
+`make flash-nano-esp32` uploads the Nano ESP32 sketch with DFU. That upload replaces the application only, so there is no separate filesystem step. The web page is compiled into the binary from `NanoESP32_Code/data/index.html`. Cards, the admin UID, the scan log, and saved Wi-Fi settings stay on the factory FAT partition across app updates.
 
 `make flash-esp32` uploads the ESP32 sketch and the filesystem. `make flash-esp32 SKIP_FS=1` (or `make flash SKIP_FS=1`) uploads firmware only and leaves the card list already stored on the device. `make flash-fs` rewrites LittleFS from `ESP32_Code/data`, which replaces `index.html`, `cards.txt`, and `admin.txt`.
 
@@ -237,6 +241,25 @@ The ESP32 adds a Web Interface to the RFID Reader.  It will allow you to access 
    | I2C SDA       | 21           | SSD1306 OLED   |
    | I2C SCL       | 22           | SSD1306 OLED   |
 
+### Arduino Nano ESP32
+
+The Nano ESP32 uses the same silkscreen wires as the classic Nano. GPIO on this board is 3.3 V. Power the OLED from the board's 3.3 V pin so SDA and SCL are not pulled up to 5 V. Open `NanoESP32_Code/NanoESP32_Code.ino` and select **Arduino Nano ESP32** from the Espressif ESP32 package. Upload the sketch. There is no LittleFS image to upload.
+
+| Function | Nano pin | ESP32-S3 GPIO |
+|----------|----------|----------------|
+| Wiegand D0 (green) | D2 | GPIO 5 |
+| Wiegand D1 (white) | D3 | GPIO 6 |
+| Beeper (yellow) | A3 | GPIO 4 |
+| Door strike | D7 | GPIO 10 |
+| OLED SDA | A4 | GPIO 11 |
+| OLED SCL | A5 | GPIO 12 |
+
+On first boot the OLED asks for an admin card. That UID is stored on the factory FAT partition. The access point is `RFID-Door-Sim` / `12345678` when the sketch cannot join the Wi-Fi network set in the source.
+
+```bash
+make flash-nano-esp32
+make flash-nano-esp32 NANO_ESP32_PORT=/dev/ttyACM0
+```
 
  # Use
 
