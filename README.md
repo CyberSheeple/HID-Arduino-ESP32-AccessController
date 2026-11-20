@@ -138,6 +138,26 @@ make flash NANO_PORT=/dev/ttyUSB0 ESP_PORT=/dev/ttyUSB1
 
 `make flash-esp32` uploads the ESP32 sketch and the filesystem. `make flash-esp32 SKIP_FS=1` (or `make flash SKIP_FS=1`) uploads firmware only and leaves the card list already stored on the device. `make flash-fs` rewrites LittleFS from `ESP32_Code/data`, which replaces `index.html`, `cards.txt`, and `admin.txt`.
 
+## Proxmark
+
+`make help` lists every target. The Proxmark targets build the [Iceman client](https://github.com/RfidResearchGroup/proxmark3) into `.tools/proxmark3` and use the admin id in `ESP32_Code/data/admin.txt` plus the door ids in `cards.txt`.
+
+```bash
+make proxmark-install           # apt packages, client build, udev groups; flashes if /dev/ttyACM* is present
+make proxmark-flash             # flash Iceman firmware
+make proxmark-provision-admin   # simulate the admin card at the HID reader
+make proxmark-test-reader       # simulate the first door card and check ESP32 serial
+make proxmark-write-admin       # write the admin id onto the tag on the antenna
+make proxmark-write-cards       # write each cards.txt id, pausing for the next tag
+make proxmark-write-modes       # write Read, Door, Add, and Remove, one tag each
+```
+
+`proxmark-install` uses sudo. After `make accessrights`, open a new shell if the Proxmark device node is not writable. ModemManager can grab the port during flash; the install target warns when it is running.
+
+`proxmark-provision-admin` and `proxmark-test-reader` simulate a 125 kHz EM4100 id. Hold the Proxmark LF antenna against the HID reader for those seconds (`SIM_SECONDS`, default 8). The test watches the ESP32 serial port for `Card: 0x........` and the board has to be in READ mode. Set `ESP_PORT` when the port is not obvious. `PM3` can point at another `pm3` binary.
+
+The write targets default to a T5577 (`TAG=lf`, `lf em 410x clone`). `TAG=hf` writes a magic 1K UID (`hf mf csetuid`) instead. Each write is read back before the target succeeds. These targets talk to the tag on the Proxmark antenna, not to the HID reader.
+
 The IDE steps below still work.
 
 # Flashing Arduino via Arduino IDE
